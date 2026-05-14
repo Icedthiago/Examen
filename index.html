@@ -175,7 +175,27 @@
     <div class="chart-card" style="margin-top:18px"><h4>📋 Tabla — Velocidad</h4><div class="table-wrap"><table id="tableVel"></table></div></div>
   </div>
 
-  <div class="section-title">04 — Datos Originales</div>
+  <div class="section-title">04 — Gráfica de Telaraña (Radar)</div>
+  <div class="chart-grid">
+    <div class="chart-card">
+      <h4>🕸️ Radar — Estadísticas Normalizadas por Variable</h4>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:16px;font-family:var(--mono)">
+        Cada eje muestra Media, Mediana y Moda normalizadas (0–100%) respecto al máximo de cada variable,
+        permitiendo comparar las tres variables en una sola vista.
+      </p>
+      <div style="position:relative;height:400px"><canvas id="radarChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h4>🕸️ Radar — Frecuencias Relativas por Color</h4>
+      <p style="font-size:.8rem;color:var(--muted);margin-bottom:16px;font-family:var(--mono)">
+        Compara el porcentaje de aparición de cada color usando los tres indicadores estadísticos
+        calculados sobre las frecuencias del dataset.
+      </p>
+      <div style="position:relative;height:400px"><canvas id="radarColor"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-title">05 — Datos Originales</div>
   <div class="chart-card">
     <div class="table-wrap"><table id="rawTable"></table></div>
   </div>
@@ -321,6 +341,137 @@ function switchTab(name, e) {
   document.getElementById('tab-' + name).classList.add('active');
   e.target.classList.add('active');
 }
+
+// ── RADAR 1: Estadísticas normalizadas por variable ───────────────────────────
+// Normaliza un valor entre 0 y 1 respecto al máximo de esa variable
+function norm(val, max) { return Math.round((val / max) * 100) / 100; }
+
+const vars   = ['peso', 'altura', 'velocidad'];
+const labels = ['Peso', 'Altura', 'Velocidad'];
+const maxVal = vars.map(v => DATA.stats[v].max);
+
+// Cada dataset = una medida estadística (media, mediana, moda)
+// Los valores se normalizan para que los 3 ejes sean comparables
+const radarDatasets = [
+  {
+    label: 'Media',
+    data:  vars.map((v,i) => norm(DATA.stats[v].media,   maxVal[i])),
+    borderColor:      '#00e5ff',
+    backgroundColor:  'rgba(0,229,255,0.15)',
+    borderWidth: 2.5, pointRadius: 5,
+    pointBackgroundColor: '#00e5ff',
+  },
+  {
+    label: 'Mediana',
+    data:  vars.map((v,i) => norm(DATA.stats[v].mediana, maxVal[i])),
+    borderColor:      '#ff6b6b',
+    backgroundColor:  'rgba(255,107,107,0.15)',
+    borderWidth: 2.5, pointRadius: 5,
+    pointBackgroundColor: '#ff6b6b',
+  },
+  {
+    label: 'Moda',
+    data:  vars.map((v,i) => norm(DATA.stats[v].moda.valores[0], maxVal[i])),
+    borderColor:      '#a3e635',
+    backgroundColor:  'rgba(163,230,53,0.15)',
+    borderWidth: 2.5, pointRadius: 5,
+    pointBackgroundColor: '#a3e635',
+  },
+];
+
+const radarScaleOpts = {
+  angleLines:  { color: 'rgba(255,255,255,0.1)' },
+  grid:        { color: 'rgba(255,255,255,0.08)' },
+  pointLabels: { color: '#e2e8f0', font: { size: 13, family: "'Space Mono'" } },
+  ticks: {
+    color: '#64748b',
+    backdropColor: 'transparent',
+    stepSize: 0.2,
+    callback: v => (v * 100).toFixed(0) + '%'
+  },
+  min: 0, max: 1,
+};
+
+new Chart(document.getElementById('radarChart'), {
+  type: 'radar',
+  data: { labels, datasets: radarDatasets },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: '#e2e8f0', font: { size: 12 }, padding: 20 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v    = vars[ctx.dataIndex];
+            const sfx  = ctx.dataset.label.toLowerCase();
+            const real = sfx === 'media'   ? DATA.stats[v].media
+                       : sfx === 'mediana' ? DATA.stats[v].mediana
+                       :                    DATA.stats[v].moda.valores[0];
+            return ` ${ctx.dataset.label}: ${real} (${(ctx.raw*100).toFixed(1)}%)`;
+          }
+        }
+      }
+    },
+    scales: { r: radarScaleOpts },
+  }
+});
+
+// ── RADAR 2: Frecuencias relativas por color ──────────────────────────────────
+// Ejes = colores; datasets = frec. absoluta, relativa y acumulada (normalizadas)
+const colorKeys   = Object.keys(DATA.color_fa);
+const maxAcum     = Math.max(...Object.values(DATA.color_acum));
+const maxAbs      = Math.max(...Object.values(DATA.color_fa));
+
+new Chart(document.getElementById('radarColor'), {
+  type: 'radar',
+  data: {
+    labels: colorKeys,
+    datasets: [
+      {
+        label: 'Frec. Absoluta (norm.)',
+        data:  colorKeys.map(k => Math.round((DATA.color_fa[k]   / maxAbs)  * 100) / 100),
+        borderColor:         '#f59e0b',
+        backgroundColor:     'rgba(245,158,11,0.15)',
+        borderWidth: 2.5, pointRadius: 5,
+        pointBackgroundColor: '#f59e0b',
+      },
+      {
+        label: 'Frec. Relativa',
+        data:  colorKeys.map(k => DATA.color_fr[k]),
+        borderColor:         '#c084fc',
+        backgroundColor:     'rgba(192,132,252,0.15)',
+        borderWidth: 2.5, pointRadius: 5,
+        pointBackgroundColor: '#c084fc',
+      },
+      {
+        label: 'Frec. Acumulada (norm.)',
+        data:  colorKeys.map(k => Math.round((DATA.color_acum[k] / maxAcum) * 100) / 100),
+        borderColor:         '#fb923c',
+        backgroundColor:     'rgba(251,146,60,0.15)',
+        borderWidth: 2.5, pointRadius: 5,
+        pointBackgroundColor: '#fb923c',
+      },
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: '#e2e8f0', font: { size: 12 }, padding: 20 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const k   = colorKeys[ctx.dataIndex];
+            const lbl = ctx.dataset.label;
+            if (lbl.includes('Absoluta'))  return ` Abs.: ${DATA.color_fa[k]} registros`;
+            if (lbl.includes('Relativa'))  return ` Rel.: ${(DATA.color_fr[k]*100).toFixed(1)}%`;
+            if (lbl.includes('Acumulada')) return ` Acum.: ${DATA.color_acum[k]} registros`;
+          }
+        }
+      }
+    },
+    scales: { r: radarScaleOpts },
+  }
+});
 </script>
 </body>
 </html>
